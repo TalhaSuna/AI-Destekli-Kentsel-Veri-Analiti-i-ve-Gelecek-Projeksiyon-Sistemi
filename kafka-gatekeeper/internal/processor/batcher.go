@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"kafka-gatekeeper/config"
+	"kafka-gatekeeper/internal/kafka"
 	redisclient "kafka-gatekeeper/internal/redis"
 )
 
@@ -24,7 +25,7 @@ func buildTopicMap(cfg *config.AppConfig) {
 	}
 }
 
-func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redisclient.Message) {
+func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redisclient.Message, producer *kafka.Producer) {
 	buildTopicMap(cfg)
 
 	// Her topic için ayrı buffer
@@ -43,7 +44,7 @@ func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redi
 			// Kalan mesajları flush et
 			for topic, msgs := range buffers {
 				if len(msgs) > 0 {
-					flush(topic, msgs)
+					flush(ctx, producer, topic, msgs)
 				}
 			}
 			log.Println("Batcher durduruluyor...")
@@ -62,7 +63,7 @@ func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redi
 
 			// BatchSize'a ulaştıysa flush et
 			if len(buffers[topic]) >= cfg.BatchSize {
-				flush(topic, buffers[topic])
+				flush(ctx, producer, topic, buffers[topic])
 				buffers[topic] = make([]string, 0, cfg.BatchSize)
 				timer.Reset(timeout)
 			}
@@ -71,7 +72,7 @@ func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redi
 			// Timeout doldu, ne varsa flush et
 			for topic, msgs := range buffers {
 				if len(msgs) > 0 {
-					flush(topic, msgs)
+					flush(ctx, producer, topic, msgs)
 					buffers[topic] = make([]string, 0, cfg.BatchSize)
 				}
 			}
@@ -80,7 +81,9 @@ func StartBatching(ctx context.Context, cfg *config.AppConfig, msgCh <-chan redi
 	}
 }
 
-func flush(topic string, messages []string) {
-	log.Printf("[BATCH] %s → %d mesaj flush edilecek (Kafka'ya gönderilecek)", topic, len(messages))
-	// TODO: Burada kafka producer çağrılacak
+func flush(ctx context.Context, producer *kafka.Producer, topic string, messages []string) {
+	log.Printf("[BATCH] %s → %d mesaj flush ediliyor", topic, len(messages))
+	if err := producer.SendBatch(ctx, topic, messages); err != nil {
+		log.Printf("[BATCH] %s → flush hatası: %v", topic, err)
+	}
 }

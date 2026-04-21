@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"kafka-gatekeeper/config"
+	"kafka-gatekeeper/internal/kafka"
 	"kafka-gatekeeper/internal/processor"
 	redisclient "kafka-gatekeeper/internal/redis"
 )
@@ -27,10 +28,11 @@ func main() {
 
 	msgCh := make(chan redisclient.Message, 1000)
 
+	producer := kafka.NewProducer(cfg)
+	defer producer.Close()
+
 	go redisclient.Subscribe(ctx, client, msgCh)
-
-
-	
+	go processor.StartBatching(ctx, cfg, msgCh, producer)
 
 	log.Println("Kafka Gatekeeper başlatıldı. Durdurmak için Ctrl+C")
 
