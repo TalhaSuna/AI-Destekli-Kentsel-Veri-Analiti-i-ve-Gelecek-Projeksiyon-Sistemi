@@ -40,5 +40,15 @@ services:
     depends_on:
       - kafka
 
+  emqx:
+    image: emqx/emqx:latest
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "18083:18083"
+    container_name: "emqx"
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"
+
 volumes:
   clickhouse-data:

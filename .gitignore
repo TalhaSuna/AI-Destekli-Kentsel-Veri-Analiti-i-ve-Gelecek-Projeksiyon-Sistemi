@@ -1,6 +1,10 @@
 # Environment variables (hassas bilgiler)
 **/.env
 
+# Node
+node_modules/
+dist/
+
 # Go binaries
 *.exe
 *.exe~
