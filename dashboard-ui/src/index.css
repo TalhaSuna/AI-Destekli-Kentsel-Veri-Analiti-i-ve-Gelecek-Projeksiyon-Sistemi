@@ -10,15 +10,59 @@ body {
   color: #e2e8f0;
 }
 
+.app {
+  min-height: 100vh;
+}
+
+.nav {
+  background: #1e293b;
+  padding: 16px 24px;
+  border-bottom: 1px solid #334155;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav h1 {
+  font-size: 1.5rem;
+  margin-bottom: 12px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 16px;
+}
+
+.nav-links a {
+  color: #94a3b8;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+  background: #334155;
+  color: #e2e8f0;
+}
+
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }
 
-h1 {
-  font-size: 1.8rem;
+h2 {
+  font-size: 1.5rem;
   margin-bottom: 8px;
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+  color: #94a3b8;
 }
 
 .status {
@@ -82,6 +126,14 @@ tr:hover {
 .badge.south { background: #8b5cf6; color: white; }
 .badge.east { background: #f59e0b; color: white; }
 .badge.west { background: #10b981; color: white; }
+
+.map-container {
+  width: 100%;
+  height: 600px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
 
 .counter {
   display: flex;
