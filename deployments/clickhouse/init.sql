@@ -119,3 +119,52 @@ SELECT
     JSONExtractFloat(raw, 'location', 'lat') AS lat,
     JSONExtractFloat(raw, 'location', 'lng') AS lng
 FROM telemetry.kafka_speed_violations;
+
+-- ============================================
+-- 4. Saatlik özet tabloları (AI modülü için)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS telemetry.hourly_density (
+    hour DateTime,
+    avg_vehicles Float64,
+    avg_pedestrians Float64,
+    avg_speed Float64,
+    total_bus Int64,
+    total_car Int64,
+    total_bike Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY hour;
+
+CREATE TABLE IF NOT EXISTS telemetry.hourly_traffic (
+    hour DateTime,
+    total_signals Int64,
+    red_count Int64,
+    green_count Int64,
+    yellow_count Int64,
+    malfunction_count Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY hour;
+
+CREATE TABLE IF NOT EXISTS telemetry.hourly_speed (
+    hour DateTime,
+    violation_count Int64,
+    avg_speed Float64,
+    avg_limit Float64,
+    avg_excess Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY hour;
+
+-- ============================================
+-- 5. Prophet tahmin tablosu
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS telemetry.predictions (
+    channel String,
+    metric String,
+    hour DateTime,
+    predicted Float64,
+    lower_bound Float64,
+    upper_bound Float64,
+    created_at DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree()
+ORDER BY (channel, metric, hour);
