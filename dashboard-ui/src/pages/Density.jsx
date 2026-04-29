@@ -77,9 +77,6 @@ export default function Density() {
   const avgVehicles = densityData.length > 0
     ? Math.round(densityData.reduce((sum, d) => sum + d.vehicle_count, 0) / densityData.length)
     : 0
-  const avgPedestrians = densityData.length > 0
-    ? Math.round(densityData.reduce((sum, d) => sum + d.pedestrian_count, 0) / densityData.length)
-    : 0
 
   return (
     <div className="dashboard">
@@ -100,10 +97,6 @@ export default function Density() {
         <div className="counter-box">
           <div className="value">{avgVehicles}</div>
           <div className="label">Ort. Araç</div>
-        </div>
-        <div className="counter-box">
-          <div className="value">{avgPedestrians}</div>
-          <div className="label">Ort. Yaya</div>
         </div>
       </div>
 
@@ -151,7 +144,6 @@ export default function Density() {
             <tr>
               <th>Bölge</th>
               <th>Araç</th>
-              <th>Yaya</th>
               <th>Ort. Hız</th>
               <th>Otobüs</th>
               <th>Araba</th>
@@ -164,7 +156,6 @@ export default function Density() {
               <tr key={i}>
                 <td>{d.zone_id}</td>
                 <td>{d.vehicle_count}</td>
-                <td>{d.pedestrian_count}</td>
                 <td>{Math.round(d.avg_speed)} km/h</td>
                 <td>{d.bus}</td>
                 <td>{d.car}</td>

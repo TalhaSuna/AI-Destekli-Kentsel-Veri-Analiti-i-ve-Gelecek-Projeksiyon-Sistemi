@@ -19,10 +19,9 @@ func GenerateDensity() models.Density {
 	bikeCount := rand.Intn(50)
 
 	return models.Density{
-		ZoneID:          zoneIDs[rand.Intn(len(zoneIDs))],
-		VehicleCount:    busCount + carCount + bikeCount,
-		PedestrianCount: rand.Intn(100),
-		AvgSpeed:        10.0 + rand.Float64()*80.0,
+		ZoneID:       zoneIDs[rand.Intn(len(zoneIDs))],
+		VehicleCount: busCount + carCount + bikeCount,
+		AvgSpeed:     10.0 + rand.Float64()*80.0,
 		VehicleTypes: models.VehicleTypes{
 			Bus:  busCount,
 			Car:  carCount,

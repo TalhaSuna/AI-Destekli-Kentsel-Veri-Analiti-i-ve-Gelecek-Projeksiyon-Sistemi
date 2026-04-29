@@ -109,7 +109,7 @@ export default function Map() {
         .addTo(map.current)
 
       markersRef.current.traffic.push(marker)
-      if (markersRef.current.traffic.length > 100) {
+      if (markersRef.current.traffic.length > 300) {
         markersRef.current.traffic.shift().remove()
       }
     })
@@ -133,7 +133,7 @@ export default function Map() {
         .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
           `<div style="color:#0f172a">
             <b>📊 ${item.zone_id}</b><br/>
-            Araç: ${item.vehicle_count} | Yaya: ${item.pedestrian_count}<br/>
+            Araç: ${item.vehicle_count}<br/>
             Ort. Hız: ${Math.round(item.avg_speed)} km/h<br/>
             🚌 ${item.bus} | 🚗 ${item.car} | 🚲 ${item.bike}
           </div>`
@@ -141,22 +141,23 @@ export default function Map() {
         .addTo(map.current)
 
       markersRef.current.density.push(marker)
-      if (markersRef.current.density.length > 100) {
+      if (markersRef.current.density.length > 300) {
         markersRef.current.density.shift().remove()
       }
     })
     setCounts(prev => ({ ...prev, density: prev.density + batch.length }))
   }
 
-  // Hız ihlalleri: kırmızı noktalar
+  // Hız ihlalleri: uyarı üçgeni
   function addSpeedMarkers(batch) {
     batch.forEach(item => {
       const el = document.createElement('div')
-      el.style.width = '12px'
-      el.style.height = '12px'
-      el.style.borderRadius = '50%'
-      el.style.backgroundColor = '#ef4444'
-      el.style.border = '2px solid white'
+      el.style.width = '0'
+      el.style.height = '0'
+      el.style.borderLeft = '8px solid transparent'
+      el.style.borderRight = '8px solid transparent'
+      el.style.borderBottom = '16px solid #ef4444'
+      el.style.filter = 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
       el.title = `${item.vehicle_id} | ${item.speed} km/h`
 
       const marker = new maplibregl.Marker({ element: el })
@@ -173,7 +174,7 @@ export default function Map() {
         .addTo(map.current)
 
       markersRef.current.speed.push(marker)
-      if (markersRef.current.speed.length > 100) {
+      if (markersRef.current.speed.length > 300) {
         markersRef.current.speed.shift().remove()
       }
     })

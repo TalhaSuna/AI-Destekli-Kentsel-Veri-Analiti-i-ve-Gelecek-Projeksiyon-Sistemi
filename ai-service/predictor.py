@@ -1,182 +1,82 @@
+import datetime
 import pandas as pd
 from prophet import Prophet
 import db
 
-
-def run_density_prediction(days: int = 7):
-    """Yoğunluk verisiyle Prophet tahmini yapar."""
-    df = db.fetch_hourly_density(days)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet] Yetersiz density verisi: {len(df)} satır")
-        return None
-
-    # avg_vehicles tahmini
-    prophet_df = df[["hour", "avg_vehicles"]].rename(columns={"hour": "ds", "avg_vehicles": "y"})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="h")  # 7 gün
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="density", metric="avg_vehicles")
-    print(f"[Prophet] density/avg_vehicles → {len(forecast)} tahmin kaydedildi")
-
-    # avg_speed tahmini
-    prophet_df = df[["hour", "avg_speed"]].rename(columns={"hour": "ds", "avg_speed": "y"})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="h")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="density", metric="avg_speed")
-    print(f"[Prophet] density/avg_speed → {len(forecast)} tahmin kaydedildi")
+# 14 saat × 12 adet 5-dakikalık dilim = 168 tahmin noktası
+PERIODS = 168
+FREQ    = "5min"
 
 
-def run_traffic_prediction(days: int = 7):
-    """Trafik ışığı verisiyle Prophet tahmini yapar."""
-    df = db.fetch_hourly_traffic(days)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet] Yetersiz traffic verisi: {len(df)} satır")
-        return None
-
-    # malfunction_count tahmini
-    prophet_df = df[["hour", "malfunction_count"]].rename(columns={"hour": "ds", "malfunction_count": "y"})
+def _fit_and_predict(df: pd.DataFrame, ds_col: str, y_col: str, periods: int = PERIODS) -> pd.DataFrame:
+    """
+    Saatlik geçmiş veriyle Prophet eğitir, şu andan itibaren
+    5-dakikalık aralıklarla 14 saatlik (168 nokta) tahmin döndürür.
+    """
+    prophet_df = df[[ds_col, y_col]].rename(columns={ds_col: "ds", y_col: "y"})
     prophet_df["y"] = prophet_df["y"].astype(float)
+
     model = Prophet(daily_seasonality=True, weekly_seasonality=True)
     model.fit(prophet_df)
 
-    future = model.make_future_dataframe(periods=168, freq="h")
-    forecast = future_forecast(model, future)
+    # Timezone-naive UTC referans noktaları
+    last     = pd.Timestamp(model.history["ds"].max()).replace(tzinfo=None)
+    now_5min = pd.Timestamp(datetime.datetime.utcnow()).floor(FREQ)
 
-    db.save_predictions(forecast, channel="traffic", metric="malfunction_count")
-    print(f"[Prophet] traffic/malfunction_count → {len(forecast)} tahmin kaydedildi")
+    # Son eğitim noktasından şu ana kadar kaç 5-dakikalık adım geçti?
+    gap = max(0, int((now_5min - last).total_seconds() / 300))
 
-    # red_count tahmini
-    prophet_df = df[["hour", "red_count"]].rename(columns={"hour": "ds", "red_count": "y"})
-    prophet_df["y"] = prophet_df["y"].astype(float)
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="h")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="traffic", metric="red_count")
-    print(f"[Prophet] traffic/red_count → {len(forecast)} tahmin kaydedildi")
-
-
-def run_speed_prediction(days: int = 7):
-    """Hız ihlali verisiyle Prophet tahmini yapar."""
-    df = db.fetch_hourly_speed(days)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet] Yetersiz speed verisi: {len(df)} satır")
-        return None
-
-    # violation_count tahmini
-    prophet_df = df[["hour", "violation_count"]].rename(columns={"hour": "ds", "violation_count": "y"})
-    prophet_df["y"] = prophet_df["y"].astype(float)
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="h")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="speed", metric="violation_count")
-    print(f"[Prophet] speed/violation_count → {len(forecast)} tahmin kaydedildi")
-
-    # avg_excess tahmini
-    prophet_df = df[["hour", "avg_excess"]].rename(columns={"hour": "ds", "avg_excess": "y"})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="h")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="speed", metric="avg_excess")
-    print(f"[Prophet] speed/avg_excess → {len(forecast)} tahmin kaydedildi")
-
-
-def run_all(days: int = 7):
-    """Tüm kanallar için tahmin yapar."""
-    print(f"[Prophet] Tüm kanallar için tahmin başlatılıyor (son {days} gün)...")
-    run_density_prediction(days)
-    run_traffic_prediction(days)
-    run_speed_prediction(days)
-    print("[Prophet] Tüm tahminler tamamlandı.")
-
-
-def run_density_prediction_5min(hours: int = 14):
-    """5 dakikalık yoğunluk tahmini (test amaçlı)."""
-    df = db.fetch_5min_density(hours)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet 5min] Yetersiz density verisi: {len(df)} satır")
-        return None
-
-    # avg_vehicles tahmini
-    prophet_df = df[["hour", "avg_vehicles"]].rename(columns={"hour": "ds", "avg_vehicles": "y"})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="5min")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="density_5min", metric="avg_vehicles")
-    print(f"[Prophet 5min] density/avg_vehicles → {len(forecast)} tahmin kaydedildi")
-
-
-def run_traffic_prediction_5min(hours: int = 14):
-    """5 dakikalık trafik tahmini (test amaçlı)."""
-    df = db.fetch_5min_traffic(hours)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet 5min] Yetersiz traffic verisi: {len(df)} satır")
-        return None
-
-    # malfunction_count tahmini
-    prophet_df = df[["hour", "malfunction_count"]].rename(columns={"hour": "ds", "malfunction_count": "y"})
-    prophet_df["y"] = prophet_df["y"].astype(float)
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="5min")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="traffic_5min", metric="malfunction_count")
-    print(f"[Prophet 5min] traffic/malfunction_count → {len(forecast)} tahmin kaydedildi")
-
-
-def run_speed_prediction_5min(hours: int = 14):
-    """5 dakikalık hız tahmini (test amaçlı)."""
-    df = db.fetch_5min_speed(hours)
-    if df.empty or len(df) < 24:
-        print(f"[Prophet 5min] Yetersiz speed verisi: {len(df)} satır")
-        return None
-
-    # violation_count tahmini
-    prophet_df = df[["hour", "violation_count"]].rename(columns={"hour": "ds", "violation_count": "y"})
-    prophet_df["y"] = prophet_df["y"].astype(float)
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(prophet_df)
-
-    future = model.make_future_dataframe(periods=168, freq="5min")
-    forecast = future_forecast(model, future)
-
-    db.save_predictions(forecast, channel="speed_5min", metric="violation_count")
-    print(f"[Prophet 5min] speed/violation_count → {len(forecast)} tahmin kaydedildi")
-
-
-def run_all_5min(hours: int = 14):
-    """Tüm kanallar için 5 dakikalık tahmin (test amaçlı)."""
-    print(f"[Prophet 5min] Tüm kanallar için tahmin başlatılıyor (son {hours} saat)...")
-    run_density_prediction_5min(hours)
-    run_traffic_prediction_5min(hours)
-    run_speed_prediction_5min(hours)
-    print("[Prophet 5min] Tüm tahminler tamamlandı.")
-
-
-def future_forecast(model: Prophet, future: pd.DataFrame) -> pd.DataFrame:
-    """Sadece gelecek tahminleri döndürür (geçmiş verileri hariç tutar)."""
+    # Geçmişi + boşluğu + istenen period sayısını kapsayan 5-dakikalık dataframe
+    future   = model.make_future_dataframe(periods=gap + periods + 1, freq=FREQ)
     forecast = model.predict(future)
-    # Sadece gelecek olan kısımları al
-    last_historical = model.history["ds"].max()
-    future_only = forecast[forecast["ds"] > last_historical][["ds", "yhat", "yhat_lower", "yhat_upper"]]
-    return future_only
+
+    # Şu andan itibaren 168 nokta (= 14 saat) döndür
+    return (
+        forecast[forecast["ds"] >= now_5min]
+        [["ds", "yhat", "yhat_lower", "yhat_upper"]]
+        .head(periods)
+    )
+
+
+def run_density_prediction():
+    df = db.fetch_hourly_density(days=7)
+    if df.empty or len(df) < 24:
+        print(f"[Prophet] Yetersiz density verisi: {len(df)} saatlik slot")
+        return
+
+    for metric in ["avg_vehicles", "avg_speed"]:
+        forecast = _fit_and_predict(df, "hour", metric)
+        db.save_predictions(forecast, channel="density", metric=metric)
+        print(f"[Prophet] density/{metric} → {len(forecast)} adet 5-dakikalık tahmin kaydedildi")
+
+
+def run_traffic_prediction():
+    df = db.fetch_hourly_traffic(days=7)
+    if df.empty or len(df) < 24:
+        print(f"[Prophet] Yetersiz traffic verisi: {len(df)} saatlik slot")
+        return
+
+    for metric in ["malfunction_count", "red_count"]:
+        forecast = _fit_and_predict(df, "hour", metric)
+        db.save_predictions(forecast, channel="traffic", metric=metric)
+        print(f"[Prophet] traffic/{metric} → {len(forecast)} adet 5-dakikalık tahmin kaydedildi")
+
+
+def run_speed_prediction():
+    df = db.fetch_hourly_speed(days=7)
+    if df.empty or len(df) < 24:
+        print(f"[Prophet] Yetersiz speed verisi: {len(df)} saatlik slot")
+        return
+
+    for metric in ["violation_count", "avg_excess"]:
+        forecast = _fit_and_predict(df, "hour", metric)
+        db.save_predictions(forecast, channel="speed", metric=metric)
+        print(f"[Prophet] speed/{metric} → {len(forecast)} adet 5-dakikalık tahmin kaydedildi")
+
+
+def run_all():
+    print("[Prophet] Tahmin başlatılıyor: 7 gün geçmiş → 14 saat / 5dk aralıklı (168 nokta)...")
+    run_density_prediction()
+    run_traffic_prediction()
+    run_speed_prediction()
+    print("[Prophet] Tamamlandı.")
