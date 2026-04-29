@@ -3,6 +3,7 @@ import TrafficLights from './pages/TrafficLights'
 import Density from './pages/Density'
 import SpeedViolations from './pages/SpeedViolations'
 import Map from './pages/Map'
+import Predictions from './pages/Predictions'
 import './index.css'
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
             <Link to="/density">📊 Yoğunluk</Link>
             <Link to="/speed-violations">🚨 Hız İhlalleri</Link>
             <Link to="/map">🗺️ Harita</Link>
+            <Link to="/predictions">🤖 Tahminler</Link>
           </div>
         </nav>
         <Routes>
@@ -23,6 +25,7 @@ export default function App() {
           <Route path="/density" element={<Density />} />
           <Route path="/speed-violations" element={<SpeedViolations />} />
           <Route path="/map" element={<Map />} />
+          <Route path="/predictions" element={<Predictions />} />
           <Route path="/" element={<SpeedViolations />} />
         </Routes>
       </div>
