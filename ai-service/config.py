@@ -9,3 +9,4 @@ CLICKHOUSE_DB = os.getenv("CLICKHOUSE_DB", "telemetry")
 CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
 API_PORT = int(os.getenv("API_PORT", "8000"))
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"

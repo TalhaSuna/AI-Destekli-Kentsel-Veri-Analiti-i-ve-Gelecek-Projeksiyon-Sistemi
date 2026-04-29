@@ -13,9 +13,8 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// Streamer her X ms'de ClickHouse'dan yeni verileri çeker
-// ve EMQX'e publish eder.
-// Akış: ClickHouse → Streamer → EMQX → Frontend
+const batchLimit = 500
+
 type Streamer struct {
 	db        ch.Conn
 	publisher *mqttclient.Publisher
@@ -30,14 +29,10 @@ func NewStreamer(db ch.Conn, pub *mqttclient.Publisher, cfg *config.AppConfig) *
 	}
 }
 
-// Start her interval'de ClickHouse'dan yeni verileri çekip EMQX'e publish eder.
-// context iptal edilene kadar çalışmaya devam eder.
 func (s *Streamer) Start(ctx context.Context) {
-	// Her tablo için son okunan zamanı tut.
-	// Böylece sadece yeni verileri çekeriz — aynı veriyi tekrar göndermeyiz.
 	lastTimes := map[string]time.Time{
-		"traffic_lights":  time.Now().UTC(),
-		"density":         time.Now().UTC(),
+		"traffic_lights":   time.Now().UTC(),
+		"density":          time.Now().UTC(),
 		"speed_violations": time.Now().UTC(),
 	}
 
@@ -59,13 +54,21 @@ func (s *Streamer) Start(ctx context.Context) {
 	}
 }
 
-// pollTraffic traffic_lights tablosundan yeni verileri çeker ve EMQX'e gönderir.
 func (s *Streamer) pollTraffic(ctx context.Context, lastTimes map[string]time.Time) {
 	query := `SELECT lamp_id, status, timing_remains, is_malfunctioning,
 			  intersection_id, lat, lng, _timestamp
-			  FROM traffic_lights WHERE _timestamp > @last ORDER BY _timestamp ASC`
+			  FROM traffic_lights
+			  WHERE _timestamp > @last
+			  ORDER BY _timestamp ASC
+			  LIMIT @limit`
 
-	rows, err := s.db.Query(ctx, query, ch.Named("last", lastTimes["traffic_lights"]))
+	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	rows, err := s.db.Query(queryCtx, query,
+		ch.Named("last", lastTimes["traffic_lights"]),
+		ch.Named("limit", batchLimit),
+	)
 	if err != nil {
 		log.Printf("[Streamer] traffic_lights sorgu hatası: %v", err)
 		return
@@ -82,16 +85,26 @@ func (s *Streamer) pollTraffic(ctx context.Context, lastTimes map[string]time.Ti
 		batch = append(batch, row)
 	}
 
-	s.publishBatch("traffic_lights", batch, lastTimes)
+	if publish(s.publisher, "traffic_lights", batch) && len(batch) > 0 {
+		lastTimes["traffic_lights"] = batch[len(batch)-1].Timestamp
+	}
 }
 
-// pollDensity density tablosundan yeni verileri çeker ve EMQX'e gönderir.
 func (s *Streamer) pollDensity(ctx context.Context, lastTimes map[string]time.Time) {
 	query := `SELECT zone_id, vehicle_count, pedestrian_count, avg_speed,
 			  bus, car, bike, lat, lng, timestamp, _timestamp
-			  FROM density WHERE _timestamp > @last ORDER BY _timestamp ASC`
+			  FROM density
+			  WHERE _timestamp > @last
+			  ORDER BY _timestamp ASC
+			  LIMIT @limit`
 
-	rows, err := s.db.Query(ctx, query, ch.Named("last", lastTimes["density"]))
+	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	rows, err := s.db.Query(queryCtx, query,
+		ch.Named("last", lastTimes["density"]),
+		ch.Named("limit", batchLimit),
+	)
 	if err != nil {
 		log.Printf("[Streamer] density sorgu hatası: %v", err)
 		return
@@ -108,16 +121,26 @@ func (s *Streamer) pollDensity(ctx context.Context, lastTimes map[string]time.Ti
 		batch = append(batch, row)
 	}
 
-	s.publishBatch("density", batch, lastTimes)
+	if publish(s.publisher, "density", batch) && len(batch) > 0 {
+		lastTimes["density"] = batch[len(batch)-1].Timestamp
+	}
 }
 
-// pollSpeed speed_violations tablosundan yeni verileri çeker ve EMQX'e gönderir.
 func (s *Streamer) pollSpeed(ctx context.Context, lastTimes map[string]time.Time) {
 	query := `SELECT vehicle_id, speed, limit_val, lane_id, direction,
 			  lat, lng, _timestamp
-			  FROM speed_violations WHERE _timestamp > @last ORDER BY _timestamp ASC`
+			  FROM speed_violations
+			  WHERE _timestamp > @last
+			  ORDER BY _timestamp ASC
+			  LIMIT @limit`
 
-	rows, err := s.db.Query(ctx, query, ch.Named("last", lastTimes["speed_violations"]))
+	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	rows, err := s.db.Query(queryCtx, query,
+		ch.Named("last", lastTimes["speed_violations"]),
+		ch.Named("limit", batchLimit),
+	)
 	if err != nil {
 		log.Printf("[Streamer] speed_violations sorgu hatası: %v", err)
 		return
@@ -134,27 +157,28 @@ func (s *Streamer) pollSpeed(ctx context.Context, lastTimes map[string]time.Time
 		batch = append(batch, row)
 	}
 
-	s.publishBatch("speed_violations", batch, lastTimes)
+	if publish(s.publisher, "speed_violations", batch) && len(batch) > 0 {
+		lastTimes["speed_violations"] = batch[len(batch)-1].Timestamp
+	}
 }
 
-// publishBatch batch'i JSON'a çevirip EMQX'e gönderir ve lastTime'ı günceller.
-func (s *Streamer) publishBatch(name string, batch interface{}, lastTimes map[string]time.Time) {
+// publish JSON'a çevirip EMQX'e gönderir, başarı durumunu döndürür.
+func publish(pub *mqttclient.Publisher, name string, batch interface{}) bool {
 	data, err := json.Marshal(batch)
 	if err != nil {
 		log.Printf("[Streamer] %s JSON hatası: %v", name, err)
-		return
+		return false
 	}
 
-	// Boş batch kontrolü — "null" veya "[]" ise gönderme
 	if string(data) == "null" || string(data) == "[]" {
-		return
+		return false
 	}
 
-	if err := s.publisher.Publish(name, data); err != nil {
+	if err := pub.Publish(name, data); err != nil {
 		log.Printf("[Streamer] %s publish hatası: %v", name, err)
-		return
+		return false
 	}
 
-	lastTimes[name] = time.Now().UTC()
 	log.Printf("[Streamer] %s → EMQX'e gönderildi", name)
+	return true
 }

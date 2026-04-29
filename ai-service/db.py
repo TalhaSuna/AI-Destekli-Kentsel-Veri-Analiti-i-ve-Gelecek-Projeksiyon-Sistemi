@@ -104,12 +104,85 @@ def save_predictions(df: pd.DataFrame, channel: str, metric: str):
 def fetch_predictions(channel: str = None) -> pd.DataFrame:
     """Predictions tablosundan tahminleri çeker."""
     client = get_client()
-    where = f"WHERE channel = '{channel}'" if channel else ""
+    if channel:
+        query = """
+            SELECT channel, metric, hour, predicted, lower_bound, upper_bound, created_at
+            FROM predictions
+            WHERE channel = {channel:String}
+            ORDER BY channel, metric, hour
+        """
+        result = client.query(query, parameters={"channel": channel})
+    else:
+        query = """
+            SELECT channel, metric, hour, predicted, lower_bound, upper_bound, created_at
+            FROM predictions
+            ORDER BY channel, metric, hour
+        """
+        result = client.query(query)
+    df = pd.DataFrame(result.result_rows, columns=result.column_names)
+    client.close()
+    return df
+
+
+def fetch_5min_density(hours: int = 14) -> pd.DataFrame:
+    """Son N saatin 5 dakikalık yoğunluk özetini çeker."""
+    client = get_client()
     query = f"""
-        SELECT channel, metric, hour, predicted, lower_bound, upper_bound, created_at
-        FROM predictions
-        {where}
-        ORDER BY channel, metric, hour
+        SELECT
+            toStartOfFiveMinutes(_timestamp) AS hour,
+            avg(vehicle_count) AS avg_vehicles,
+            avg(pedestrian_count) AS avg_pedestrians,
+            avg(avg_speed) AS avg_speed,
+            sum(bus) AS total_bus,
+            sum(car) AS total_car,
+            sum(bike) AS total_bike
+        FROM density
+        WHERE _timestamp >= now() - INTERVAL {hours} HOUR
+        GROUP BY hour
+        ORDER BY hour
+    """
+    result = client.query(query)
+    df = pd.DataFrame(result.result_rows, columns=result.column_names)
+    client.close()
+    return df
+
+
+def fetch_5min_traffic(hours: int = 14) -> pd.DataFrame:
+    """Son N saatin 5 dakikalık trafik ışığı özetini çeker."""
+    client = get_client()
+    query = f"""
+        SELECT
+            toStartOfFiveMinutes(_timestamp) AS hour,
+            count() AS total_signals,
+            countIf(status = 'red') AS red_count,
+            countIf(status = 'green') AS green_count,
+            countIf(status = 'yellow') AS yellow_count,
+            countIf(is_malfunctioning = 1) AS malfunction_count
+        FROM traffic_lights
+        WHERE _timestamp >= now() - INTERVAL {hours} HOUR
+        GROUP BY hour
+        ORDER BY hour
+    """
+    result = client.query(query)
+    df = pd.DataFrame(result.result_rows, columns=result.column_names)
+    client.close()
+    return df
+
+
+def fetch_5min_speed(hours: int = 14) -> pd.DataFrame:
+    """Son N saatin 5 dakikalık hız ihlali özetini çeker."""
+    client = get_client()
+    query = f"""
+        SELECT
+            toStartOfFiveMinutes(_timestamp) AS hour,
+            count() AS violation_count,
+            avg(speed) AS avg_speed,
+            avg(limit_val) AS avg_limit,
+            avg(speed - limit_val) AS avg_excess
+        FROM speed_violations
+        WHERE _timestamp >= now() - INTERVAL {hours} HOUR
+        GROUP BY hour
+        ORDER BY hour
     """
     result = client.query(query)
     df = pd.DataFrame(result.result_rows, columns=result.column_names)
