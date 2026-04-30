@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS telemetry.traffic_lights (
     intersection_id String,
     lat Float64,
     lng Float64,
-    _timestamp DateTime DEFAULT now()
+    _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
 ORDER BY (_timestamp, lamp_id);
 
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS telemetry.density (
     lat Float64,
     lng Float64,
     timestamp String,
-    _timestamp DateTime DEFAULT now()
+    _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
 ORDER BY (_timestamp, zone_id);
 
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS telemetry.speed_violations (
     direction String,
     lat Float64,
     lng Float64,
-    _timestamp DateTime DEFAULT now()
+    _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
 ORDER BY (_timestamp, vehicle_id);
 
@@ -58,8 +58,8 @@ SETTINGS
     kafka_topic_list = 'telemetry.traffic_lights',
     kafka_group_name = 'clickhouse_traffic',
     kafka_format = 'JSONAsString',
-    kafka_max_wait_ms = 500,
-    kafka_flush_interval_ms = 500;
+    kafka_max_wait_ms = 100,
+    kafka_flush_interval_ms = 100;
 
 CREATE TABLE IF NOT EXISTS telemetry.kafka_density (
     raw String
@@ -69,8 +69,8 @@ SETTINGS
     kafka_topic_list = 'telemetry.density',
     kafka_group_name = 'clickhouse_density',
     kafka_format = 'JSONAsString',
-    kafka_max_wait_ms = 500,
-    kafka_flush_interval_ms = 500;
+    kafka_max_wait_ms = 100,
+    kafka_flush_interval_ms = 100;
 
 CREATE TABLE IF NOT EXISTS telemetry.kafka_speed_violations (
     raw String
@@ -80,8 +80,8 @@ SETTINGS
     kafka_topic_list = 'telemetry.speed_violations',
     kafka_group_name = 'clickhouse_speed',
     kafka_format = 'JSONAsString',
-    kafka_max_wait_ms = 500,
-    kafka_flush_interval_ms = 500;
+    kafka_max_wait_ms = 100,
+    kafka_flush_interval_ms = 100;
 
 -- ============================================
 -- 3. Materialized View'lar - JSON parse edip MergeTree'ye yaz
