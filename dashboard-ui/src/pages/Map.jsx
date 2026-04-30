@@ -4,28 +4,23 @@ import maplibregl from 'maplibre-gl'
 import mqtt from 'mqtt'
 
 const MQTT_URL = 'ws://localhost:8083/mqtt'
-const TOPICS = [
-  'telemetry/traffic_lights',
-  'telemetry/density',
-  'telemetry/speed_violations',
-]
+const TOPICS = ['telemetry/traffic_lights', 'telemetry/density', 'telemetry/speed_violations']
+const MAX_FEATURES = 300
 
-const STATUS_COLORS = { red: '#ef4444', green: '#22c55e', yellow: '#eab308' }
+const toGeoJSON = (features) => ({ type: 'FeatureCollection', features })
 
 export default function Map() {
   const mapContainer = useRef(null)
   const map = useRef(null)
-  const markersRef = useRef({ traffic: [], density: [], speed: [] })
+  const mapReady = useRef(false)
+  const featuresRef = useRef({ traffic: [], density: [], speed: [] })
   const [connected, setConnected] = useState(false)
   const [counts, setCounts] = useState({ traffic: 0, density: 0, speed: 0 })
 
-  // Harita başlat
   useEffect(() => {
     if (map.current) return
 
-    const KONYA = [32.4836, 37.8746]
-
-    map.current = new maplibregl.Map({
+    const m = new maplibregl.Map({
       container: mapContainer.current,
       style: {
         version: 8,
@@ -37,21 +32,125 @@ export default function Map() {
             attribution: '&copy; OpenStreetMap contributors',
           },
         },
-        layers: [
-          { id: 'osm', type: 'raster', source: 'osm' },
-        ],
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
       },
-      center: KONYA,
+      center: [32.4836, 37.8746],
       zoom: 12,
     })
 
+    map.current = m
+
+    m.on('load', () => {
+      // Trafik ışıkları: renkli daireler, arızalı = kırmızı çerçeve
+      m.addSource('traffic-source', { type: 'geojson', data: toGeoJSON([]) })
+      m.addLayer({
+        id: 'traffic-layer',
+        type: 'circle',
+        source: 'traffic-source',
+        paint: {
+          'circle-radius': 7,
+          'circle-color': [
+            'match', ['get', 'status'],
+            'red',    '#ef4444',
+            'green',  '#22c55e',
+            'yellow', '#eab308',
+            '#94a3b8'
+          ],
+          'circle-stroke-width': ['case', ['==', ['get', 'is_malfunctioning'], 1], 3, 2],
+          'circle-stroke-color': ['case', ['==', ['get', 'is_malfunctioning'], 1], '#f87171', '#ffffff'],
+        }
+      })
+
+      // Yoğunluk: araç sayısına göre büyüyen mavi daireler
+      m.addSource('density-source', { type: 'geojson', data: toGeoJSON([]) })
+      m.addLayer({
+        id: 'density-layer',
+        type: 'circle',
+        source: 'density-source',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'vehicle_count'], 0, 6, 50, 22],
+          'circle-color': 'rgba(59, 130, 246, 0.6)',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(59, 130, 246, 0.9)',
+        }
+      })
+
+      // Hız ihlalleri: kırmızı üçgen sembol
+      m.addSource('speed-source', { type: 'geojson', data: toGeoJSON([]) })
+      m.addLayer({
+        id: 'speed-layer',
+        type: 'symbol',
+        source: 'speed-source',
+        layout: {
+          'text-field': '▲',
+          'text-size': 16,
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#ef4444',
+          'text-halo-color': 'rgba(0,0,0,0.5)',
+          'text-halo-width': 1,
+        }
+      })
+
+      // Popup'lar
+      m.on('click', 'traffic-layer', (e) => {
+        const p = e.features[0].properties
+        const color = p.status === 'red' ? '#ef4444' : p.status === 'green' ? '#22c55e' : '#eab308'
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="color:#0f172a">
+            <b>🚦 ${p.lamp_id}</b><br/>
+            Durum: <b style="color:${color}">${p.status}</b><br/>
+            Kalan: ${p.timing_remains}s<br/>
+            Arızalı: ${p.is_malfunctioning === 1 ? '⚠️ Evet' : 'Hayır'}<br/>
+            Kavşak: ${p.intersection_id}
+          </div>`)
+          .addTo(m)
+      })
+
+      m.on('click', 'density-layer', (e) => {
+        const p = e.features[0].properties
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="color:#0f172a">
+            <b>📊 ${p.zone_id}</b><br/>
+            Araç: ${p.vehicle_count}<br/>
+            Ort. Hız: ${Math.round(p.avg_speed)} km/h<br/>
+            🚌 ${p.bus} | 🚗 ${p.car} | 🚲 ${p.bike}
+          </div>`)
+          .addTo(m)
+      })
+
+      m.on('click', 'speed-layer', (e) => {
+        const p = e.features[0].properties
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="color:#0f172a">
+            <b>🚨 ${p.vehicle_id}</b><br/>
+            Hız: <b style="color:#ef4444">${p.speed} km/h</b><br/>
+            Limit: ${p.limit_val} km/h<br/>
+            Aşım: +${p.speed - p.limit_val} km/h<br/>
+            Yön: ${p.direction}
+          </div>`)
+          .addTo(m)
+      })
+
+      ;['traffic-layer', 'density-layer', 'speed-layer'].forEach(layer => {
+        m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
+        m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
+      })
+
+      mapReady.current = true
+    })
+
     return () => {
-      map.current?.remove()
+      mapReady.current = false
+      m.remove()
       map.current = null
     }
   }, [])
 
-  // MQTT bağlantısı
   useEffect(() => {
     const client = mqtt.connect(MQTT_URL, {
       clientId: 'dashboard-map-' + Math.random().toString(16).slice(2, 8),
@@ -65,120 +164,26 @@ export default function Map() {
     client.on('message', (topic, message) => {
       try {
         const batch = JSON.parse(message.toString())
-        if (!Array.isArray(batch) || batch.length === 0 || !map.current) return
+        if (!Array.isArray(batch) || batch.length === 0 || !mapReady.current) return
 
-        if (topic.includes('traffic_lights')) {
-          addTrafficMarkers(batch)
-        } else if (topic.includes('density')) {
-          addDensityMarkers(batch)
-        } else if (topic.includes('speed_violations')) {
-          addSpeedMarkers(batch)
-        }
+        if (topic.includes('traffic_lights'))    updateLayer('traffic', 'traffic-source', batch, trafficFeature)
+        else if (topic.includes('density'))      updateLayer('density', 'density-source', batch, densityFeature)
+        else if (topic.includes('speed'))        updateLayer('speed',   'speed-source',   batch, speedFeature)
       } catch (e) {
         console.error('Parse hatası:', e)
       }
     })
 
     client.on('close', () => setConnected(false))
-
     return () => client.end()
   }, [])
 
-  // Trafik ışıkları: renkli daireler
-  function addTrafficMarkers(batch) {
-    batch.forEach(item => {
-      const el = document.createElement('div')
-      el.style.width = '14px'
-      el.style.height = '14px'
-      el.style.borderRadius = '50%'
-      el.style.backgroundColor = STATUS_COLORS[item.status] || '#94a3b8'
-      el.style.border = item.is_malfunctioning === 1 ? '3px solid #f87171' : '2px solid white'
-      el.title = `Lamp: ${item.lamp_id} | Durum: ${item.status} | Kavşak: ${item.intersection_id}`
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([item.lng, item.lat])
-        .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
-          `<div style="color:#0f172a">
-            <b>🚦 ${item.lamp_id}</b><br/>
-            Durum: <b style="color:${STATUS_COLORS[item.status]}">${item.status}</b><br/>
-            Kalan: ${item.timing_remains}s<br/>
-            Arızalı: ${item.is_malfunctioning === 1 ? '⚠️ Evet' : 'Hayır'}<br/>
-            Kavşak: ${item.intersection_id}
-          </div>`
-        ))
-        .addTo(map.current)
-
-      markersRef.current.traffic.push(marker)
-      if (markersRef.current.traffic.length > 300) {
-        markersRef.current.traffic.shift().remove()
-      }
-    })
-    setCounts(prev => ({ ...prev, traffic: prev.traffic + batch.length }))
-  }
-
-  // Yoğunluk: büyüklüğü değişen mavi daireler
-  function addDensityMarkers(batch) {
-    batch.forEach(item => {
-      const size = Math.min(8 + item.vehicle_count * 2, 40)
-      const el = document.createElement('div')
-      el.style.width = `${size}px`
-      el.style.height = `${size}px`
-      el.style.borderRadius = '50%'
-      el.style.backgroundColor = 'rgba(59, 130, 246, 0.6)'
-      el.style.border = '2px solid rgba(59, 130, 246, 0.9)'
-      el.title = `Bölge: ${item.zone_id} | Araç: ${item.vehicle_count}`
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([item.lng, item.lat])
-        .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
-          `<div style="color:#0f172a">
-            <b>📊 ${item.zone_id}</b><br/>
-            Araç: ${item.vehicle_count}<br/>
-            Ort. Hız: ${Math.round(item.avg_speed)} km/h<br/>
-            🚌 ${item.bus} | 🚗 ${item.car} | 🚲 ${item.bike}
-          </div>`
-        ))
-        .addTo(map.current)
-
-      markersRef.current.density.push(marker)
-      if (markersRef.current.density.length > 300) {
-        markersRef.current.density.shift().remove()
-      }
-    })
-    setCounts(prev => ({ ...prev, density: prev.density + batch.length }))
-  }
-
-  // Hız ihlalleri: uyarı üçgeni
-  function addSpeedMarkers(batch) {
-    batch.forEach(item => {
-      const el = document.createElement('div')
-      el.style.width = '0'
-      el.style.height = '0'
-      el.style.borderLeft = '8px solid transparent'
-      el.style.borderRight = '8px solid transparent'
-      el.style.borderBottom = '16px solid #ef4444'
-      el.style.filter = 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'
-      el.title = `${item.vehicle_id} | ${item.speed} km/h`
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([item.lng, item.lat])
-        .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
-          `<div style="color:#0f172a">
-            <b>🚨 ${item.vehicle_id}</b><br/>
-            Hız: <b style="color:#ef4444">${item.speed} km/h</b><br/>
-            Limit: ${item.limit_val} km/h<br/>
-            Aşım: +${item.speed - item.limit_val} km/h<br/>
-            Yön: ${item.direction}
-          </div>`
-        ))
-        .addTo(map.current)
-
-      markersRef.current.speed.push(marker)
-      if (markersRef.current.speed.length > 300) {
-        markersRef.current.speed.shift().remove()
-      }
-    })
-    setCounts(prev => ({ ...prev, speed: prev.speed + batch.length }))
+  function updateLayer(key, sourceId, batch, toFeature) {
+    const arr = featuresRef.current[key]
+    arr.push(...batch.map(toFeature))
+    if (arr.length > MAX_FEATURES) arr.splice(0, arr.length - MAX_FEATURES)
+    map.current.getSource(sourceId).setData(toGeoJSON(arr))
+    setCounts(prev => ({ ...prev, [key]: prev[key] + batch.length }))
   }
 
   return (
@@ -205,3 +210,39 @@ export default function Map() {
     </div>
   )
 }
+
+const trafficFeature = (item) => ({
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [item.lng, item.lat] },
+  properties: {
+    lamp_id: item.lamp_id,
+    status: item.status,
+    timing_remains: item.timing_remains,
+    is_malfunctioning: item.is_malfunctioning,
+    intersection_id: item.intersection_id,
+  }
+})
+
+const densityFeature = (item) => ({
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [item.lng, item.lat] },
+  properties: {
+    zone_id: item.zone_id,
+    vehicle_count: item.vehicle_count,
+    avg_speed: item.avg_speed,
+    bus: item.bus,
+    car: item.car,
+    bike: item.bike,
+  }
+})
+
+const speedFeature = (item) => ({
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [item.lng, item.lat] },
+  properties: {
+    vehicle_id: item.vehicle_id,
+    speed: item.speed,
+    limit_val: item.limit_val,
+    direction: item.direction,
+  }
+})

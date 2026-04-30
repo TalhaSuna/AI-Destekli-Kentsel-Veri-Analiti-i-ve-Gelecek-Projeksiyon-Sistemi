@@ -57,7 +57,9 @@ SETTINGS
     kafka_broker_list = 'kafka:19092',
     kafka_topic_list = 'telemetry.traffic_lights',
     kafka_group_name = 'clickhouse_traffic',
-    kafka_format = 'JSONAsString';
+    kafka_format = 'JSONAsString',
+    kafka_max_wait_ms = 500,
+    kafka_flush_interval_ms = 500;
 
 CREATE TABLE IF NOT EXISTS telemetry.kafka_density (
     raw String
@@ -66,7 +68,9 @@ SETTINGS
     kafka_broker_list = 'kafka:19092',
     kafka_topic_list = 'telemetry.density',
     kafka_group_name = 'clickhouse_density',
-    kafka_format = 'JSONAsString';
+    kafka_format = 'JSONAsString',
+    kafka_max_wait_ms = 500,
+    kafka_flush_interval_ms = 500;
 
 CREATE TABLE IF NOT EXISTS telemetry.kafka_speed_violations (
     raw String
@@ -75,7 +79,9 @@ SETTINGS
     kafka_broker_list = 'kafka:19092',
     kafka_topic_list = 'telemetry.speed_violations',
     kafka_group_name = 'clickhouse_speed',
-    kafka_format = 'JSONAsString';
+    kafka_format = 'JSONAsString',
+    kafka_max_wait_ms = 500,
+    kafka_flush_interval_ms = 500;
 
 -- ============================================
 -- 3. Materialized View'lar - JSON parse edip MergeTree'ye yaz

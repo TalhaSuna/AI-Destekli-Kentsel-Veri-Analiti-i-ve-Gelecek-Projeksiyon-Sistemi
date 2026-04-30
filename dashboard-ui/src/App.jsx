@@ -1,10 +1,12 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
-import TrafficLights from './pages/TrafficLights'
-import Density from './pages/Density'
-import SpeedViolations from './pages/SpeedViolations'
-import Map from './pages/Map'
-import Predictions from './pages/Predictions'
+import { lazy, Suspense } from 'react'
 import './index.css'
+
+const TrafficLights = lazy(() => import('./pages/TrafficLights'))
+const Density = lazy(() => import('./pages/Density'))
+const SpeedViolations = lazy(() => import('./pages/SpeedViolations'))
+const Map = lazy(() => import('./pages/Map'))
+const Predictions = lazy(() => import('./pages/Predictions'))
 
 export default function App() {
   return (
@@ -20,14 +22,16 @@ export default function App() {
             <Link to="/predictions">🤖 Tahminler</Link>
           </div>
         </nav>
-        <Routes>
-          <Route path="/traffic-lights" element={<TrafficLights />} />
-          <Route path="/density" element={<Density />} />
-          <Route path="/speed-violations" element={<SpeedViolations />} />
-          <Route path="/map" element={<Map />} />
-          <Route path="/predictions" element={<Predictions />} />
-          <Route path="/" element={<SpeedViolations />} />
-        </Routes>
+        <Suspense fallback={<div style={{ padding: '2rem', color: '#94a3b8' }}>Yükleniyor...</div>}>
+          <Routes>
+            <Route path="/traffic-lights" element={<TrafficLights />} />
+            <Route path="/density" element={<Density />} />
+            <Route path="/speed-violations" element={<SpeedViolations />} />
+            <Route path="/map" element={<Map />} />
+            <Route path="/predictions" element={<Predictions />} />
+            <Route path="/" element={<SpeedViolations />} />
+          </Routes>
+        </Suspense>
       </div>
     </Router>
   )

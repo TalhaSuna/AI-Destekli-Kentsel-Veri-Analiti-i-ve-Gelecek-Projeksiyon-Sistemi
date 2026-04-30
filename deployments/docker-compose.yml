@@ -66,6 +66,7 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./clickhouse/streaming.xml:/etc/clickhouse-server/users.d/streaming.xml
     depends_on:
       kafka:
         condition: service_healthy
@@ -133,7 +134,7 @@ services:
       KAFKA_TOPIC_SPEED: telemetry.speed_violations
       KAFKA_TOPIC_AIR: telemetry.air_quality
       BATCH_SIZE: "1000"
-      BATCH_TIMEOUT_MS: "1000"
+      BATCH_TIMEOUT_MS: "200"
     depends_on:
       redis:
         condition: service_healthy
@@ -180,7 +181,7 @@ services:
       MQTT_CLIENT_ID: dashboard-api
       MQTT_TOPIC_PREFIX: telemetry
       SERVER_PORT: "8080"
-      POLL_INTERVAL_MS: "1000"
+      POLL_INTERVAL_MS: "200"
     depends_on:
       clickhouse:
         condition: service_healthy

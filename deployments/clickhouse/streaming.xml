@@ -1,0 +1,7 @@
+<clickhouse>
+    <profiles>
+        <default>
+            <stream_flush_interval_ms>500</stream_flush_interval_ms>
+        </default>
+    </profiles>
+</clickhouse>
