@@ -9,17 +9,16 @@ import (
 )
 
 type Config struct {
-	RedisHost               string
-	RedisPort               string
-	RedisPassword           string
-	RedisDB                 int
-	PublishRatePerChannel   int
+	RedisHost             string
+	RedisPort             string
+	RedisPassword         string
+	RedisDB               int
+	PublishRatePerChannel int
 }
 
 func Load() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf(".env dosyası yüklenemedi: %w", err)
-	}
+	// .env yoksa (Docker ortamı) sistem env var'larını kullan
+	_ = godotenv.Load()
 
 	redisDB, err := strconv.Atoi(getEnv("REDIS_DB", "0"))
 	if err != nil {

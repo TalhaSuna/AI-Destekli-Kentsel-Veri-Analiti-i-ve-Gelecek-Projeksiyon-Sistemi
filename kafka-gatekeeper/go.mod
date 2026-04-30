@@ -1,6 +1,6 @@
 module kafka-gatekeeper
 
-go 1.26.1
+go 1.24.1
 
 require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0

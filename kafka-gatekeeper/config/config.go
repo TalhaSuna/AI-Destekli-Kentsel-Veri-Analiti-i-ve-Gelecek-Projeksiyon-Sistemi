@@ -21,10 +21,10 @@ type AppConfig struct {
 func LoadConfig() *AppConfig {
 	var cfg AppConfig
 	err := cleanenv.ReadConfig(".env", &cfg)
-	if err != nil{
+	if err != nil {
 		log.Println("Bilgi: .env dosyası bulunamadı. Sistem ortam değişkenleri kullanılacak.")
+		cleanenv.ReadEnv(&cfg)
 	}
 	return &cfg
-
-}	
+}
 

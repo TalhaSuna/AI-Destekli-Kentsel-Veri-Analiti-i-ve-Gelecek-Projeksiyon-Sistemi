@@ -32,6 +32,7 @@ func LoadConfig() *AppConfig {
 	err := cleanenv.ReadConfig(".env", &cfg)
 	if err != nil {
 		log.Println("Bilgi: .env dosyası bulunamadı. Sistem ortam değişkenleri kullanılacak.")
+		cleanenv.ReadEnv(&cfg)
 	}
 	return &cfg
 }

@@ -1,0 +1,4 @@
+kafka-gatekeeper
+*.exe
+.env
+.git
