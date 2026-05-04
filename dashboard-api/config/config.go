@@ -23,6 +23,9 @@ type AppConfig struct {
 	// HTTP sunucu portu
 	ServerPort string `env:"SERVER_PORT" env-default:"8080"`
 
+	// RS256 public key dosya yolu (auth-service'in ürettiği)
+	JWTPublicKeyPath string `env:"JWT_PUBLIC_KEY_PATH" env-default:"keys/public.pem"`
+
 	// ClickHouse'a sorgu atma aralığı (milisaniye)
 	PollIntervalMS int `env:"POLL_INTERVAL_MS" env-default:"1000"`
 }

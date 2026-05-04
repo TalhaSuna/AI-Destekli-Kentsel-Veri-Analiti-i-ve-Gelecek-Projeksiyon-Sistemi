@@ -11,6 +11,7 @@ import (
 	"dashboard-api/config"
 	chclient "dashboard-api/internal/clickhouse"
 	"dashboard-api/internal/handlers"
+	"dashboard-api/internal/middleware"
 	mqttclient "dashboard-api/internal/mqtt"
 	"dashboard-api/internal/streamer"
 )
@@ -40,13 +41,20 @@ func main() {
 	str := streamer.NewStreamer(db, pub, cfg)
 	go str.Start(ctx)
 
-	// 5. REST endpoint'lerini tanımla — geçmiş veri için
-	rest := &handlers.RestHandler{DB: db}
-	http.HandleFunc("/api/traffic/history", rest.GetTrafficHistory)
-	http.HandleFunc("/api/density/history", rest.GetDensityHistory)
-	http.HandleFunc("/api/speed/history", rest.GetSpeedHistory)
+	// 5. RS256 public key yükle — auth-service'in ürettiği
+	pubKey, err := middleware.LoadPublicKey(cfg.JWTPublicKeyPath)
+	if err != nil {
+		log.Fatalf("JWT public key yüklenemedi: %v", err)
+	}
+	log.Printf("JWT public key yüklendi: %s", cfg.JWTPublicKeyPath)
 
-	// 6. HTTP sunucuyu başlat
+	// 6. REST endpoint'leri — her biri JWT + permission ile korunuyor
+	rest := &handlers.RestHandler{DB: db}
+	http.HandleFunc("/api/traffic/history", middleware.Protect(pubKey, "view_traffic", rest.GetTrafficHistory))
+	http.HandleFunc("/api/density/history", middleware.Protect(pubKey, "view_density", rest.GetDensityHistory))
+	http.HandleFunc("/api/speed/history", middleware.Protect(pubKey, "view_speed", rest.GetSpeedHistory))
+
+	// 7. HTTP sunucuyu başlat
 	log.Printf("Dashboard API başlatıldı: http://localhost:%s", cfg.ServerPort)
 	go func() {
 		if err := http.ListenAndServe(":"+cfg.ServerPort, nil); err != nil {
@@ -54,7 +62,7 @@ func main() {
 		}
 	}()
 
-	// 7. Graceful shutdown
+	// 8. Graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
