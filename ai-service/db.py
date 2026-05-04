@@ -29,6 +29,7 @@ def fetch_hourly_density(days: int = 7) -> pd.DataFrame:
     result = client.query(query)
     df = pd.DataFrame(result.result_rows, columns=result.column_names)
     client.close()
+    df["hour"] = pd.to_datetime(df["hour"]).dt.tz_localize(None)
     return df
 
 
@@ -48,6 +49,7 @@ def fetch_hourly_traffic(days: int = 7) -> pd.DataFrame:
     result = client.query(query)
     df = pd.DataFrame(result.result_rows, columns=result.column_names)
     client.close()
+    df["hour"] = pd.to_datetime(df["hour"]).dt.tz_localize(None)
     return df
 
 
@@ -67,6 +69,7 @@ def fetch_hourly_speed(days: int = 7) -> pd.DataFrame:
     result = client.query(query)
     df = pd.DataFrame(result.result_rows, columns=result.column_names)
     client.close()
+    df["hour"] = pd.to_datetime(df["hour"]).dt.tz_localize(None)
     return df
 
 

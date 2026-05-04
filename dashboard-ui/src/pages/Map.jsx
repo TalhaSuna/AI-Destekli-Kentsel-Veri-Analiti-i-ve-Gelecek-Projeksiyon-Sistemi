@@ -14,6 +14,9 @@ export default function Map() {
   const map = useRef(null)
   const mapReady = useRef(false)
   const featuresRef = useRef({ traffic: [], density: [], speed: [] })
+  const pendingRef = useRef({ traffic: [], density: [], speed: [] })
+  const pendingCountsRef = useRef({ traffic: 0, density: 0, speed: 0 })
+  const rafRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const [counts, setCounts] = useState({ traffic: 0, density: 0, speed: 0 })
 
@@ -166,9 +169,9 @@ export default function Map() {
         const batch = JSON.parse(message.toString())
         if (!Array.isArray(batch) || batch.length === 0 || !mapReady.current) return
 
-        if (topic.includes('traffic_lights'))    updateLayer('traffic', 'traffic-source', batch, trafficFeature)
-        else if (topic.includes('density'))      updateLayer('density', 'density-source', batch, densityFeature)
-        else if (topic.includes('speed'))        updateLayer('speed',   'speed-source',   batch, speedFeature)
+        if (topic.includes('traffic_lights'))    queueUpdate('traffic', batch, trafficFeature)
+        else if (topic.includes('density'))      queueUpdate('density', batch, densityFeature)
+        else if (topic.includes('speed'))        queueUpdate('speed',   batch, speedFeature)
       } catch (e) {
         console.error('Parse hatası:', e)
       }
@@ -178,12 +181,41 @@ export default function Map() {
     return () => client.end()
   }, [])
 
-  function updateLayer(key, sourceId, batch, toFeature) {
-    const arr = featuresRef.current[key]
-    arr.push(...batch.map(toFeature))
-    if (arr.length > MAX_FEATURES) arr.splice(0, arr.length - MAX_FEATURES)
-    map.current.getSource(sourceId).setData(toGeoJSON(arr))
-    setCounts(prev => ({ ...prev, [key]: prev[key] + batch.length }))
+  function queueUpdate(key, batch, toFeature) {
+    pendingRef.current[key].push(...batch.map(toFeature))
+    pendingCountsRef.current[key] += batch.length
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(flushToMap)
+    }
+  }
+
+  function flushToMap() {
+    rafRef.current = null
+    if (!map.current || !mapReady.current) return
+
+    const addedCounts = { traffic: 0, density: 0, speed: 0 }
+
+    const flush = (key, sourceId) => {
+      const pending = pendingRef.current[key]
+      if (pending.length === 0) return
+      const arr = featuresRef.current[key]
+      arr.push(...pending)
+      if (arr.length > MAX_FEATURES) arr.splice(0, arr.length - MAX_FEATURES)
+      map.current.getSource(sourceId).setData(toGeoJSON(arr))
+      addedCounts[key] = pendingCountsRef.current[key]
+      pendingRef.current[key] = []
+      pendingCountsRef.current[key] = 0
+    }
+
+    flush('traffic', 'traffic-source')
+    flush('density', 'density-source')
+    flush('speed',   'speed-source')
+
+    setCounts(prev => ({
+      traffic: prev.traffic + addedCounts.traffic,
+      density: prev.density + addedCounts.density,
+      speed:   prev.speed   + addedCounts.speed,
+    }))
   }
 
   return (

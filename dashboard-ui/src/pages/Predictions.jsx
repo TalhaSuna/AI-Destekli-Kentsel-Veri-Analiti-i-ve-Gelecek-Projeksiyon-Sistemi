@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, ReferenceLine,
+  AreaChart, Area, LineChart, Line,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 
 const AI_URL = 'http://localhost:8000'
@@ -34,11 +34,6 @@ function round1(v) { return Math.round(v * 10) / 10 }
 // 168 nokta için her 12. etiket = her saat başı gösterilir
 const XAXIS_INTERVAL = 11
 
-function riskLevel(count) {
-  if (count < 5)  return { label: 'Düşük',  color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
-  if (count < 12) return { label: 'Orta',   color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
-  return           { label: 'Yüksek', color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
-}
 
 const tooltipStyle = {
   contentStyle: { background: '#1e293b', border: '1px solid #334155', borderRadius: 8 },
@@ -124,109 +119,55 @@ function DensitySection({ data }) {
   )
 }
 
-// ─── Hız İhlali / Risk Bölümü ────────────────────────────────────────────────
+// ─── Hız İhlali Bölümü ───────────────────────────────────────────────────────
 
 function SpeedSection({ data }) {
-  const violations = data
-    .filter(d => d.metric === 'violation_count')
-    .map(d => {
-      const risk = riskLevel(d.predicted)
-      return {
-        dt:    d.hour,
-        hour:  formatHour(d.hour),
-        count: round1(d.predicted),
-        risk:  risk.label,
-        color: risk.color,
-        bg:    risk.bg,
-      }
-    })
-
-  const highRisk = violations.filter(v => v.risk === 'Yüksek')
   const avgExcessData = data
     .filter(d => d.metric === 'avg_excess')
-    .map(d => ({ dt: d.hour, hour: formatHour(d.hour), value: round1(d.predicted) }))
+    .map(d => ({ dt: d.hour, hour: formatHour(d.hour), value: round1(d.predicted), upper: round1(d.upper_bound), lower: round1(d.lower_bound) }))
 
-  const totalExpected = Math.round(violations.reduce((s, v) => s + v.count, 0))
+  const peak    = avgExcessData.reduce((a, b) => (b.value > a.value ? b : a), { value: 0 })
+  const avg     = avgExcessData.length > 0
+    ? round1(avgExcessData.reduce((s, d) => s + d.value, 0) / avgExcessData.length)
+    : 0
 
   return (
     <section style={{ marginBottom: 40 }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>🚨 Hız İhlali & Kaza Risk Tahmini</h2>
+        <h2 style={{ margin: 0 }}>🚨 Hız İhlali Tahmini</h2>
         <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: 4 }}>
-          Hangi saatlerde hız limitleri daha çok aşılacak? Kaza riski en yüksek zaman dilimleri.
+          Önümüzdeki 14 saatte sürücülerin hız limitini ortalama ne kadar aşacağı tahmini.
         </p>
       </div>
 
-      {violations.length === 0 ? <EmptyState /> : <>
+      {avgExcessData.length === 0 ? <EmptyState /> : <>
         <div className="counter" style={{ marginBottom: 20 }}>
-          <StatBox label="Toplam Beklenen İhlal" value={totalExpected}               color="#f87171" />
-          <StatBox label="Yüksek Riskli Dilim"   value={`${highRisk.length} × 5dk`} color="#f87171" />
-          <StatBox label="Düşük Riskli Dilim"    value={`${violations.filter(v => v.risk === 'Düşük').length} × 5dk`} color="#4ade80" />
-          <StatBox label="Risk Eşiği (5dk)"      value="> 12 ihlal = Yüksek"       color="#94a3b8" />
+          <StatBox label="Tahmin Aralığı"        value="14 saat"              color="#3b82f6" />
+          <StatBox label="Ort. Limit Aşımı"      value={`${avg} km/h`}        color="#f97316" />
+          <StatBox label="Zirve Aşım Tahmini"    value={`${peak.value} km/h`} color="#f87171" />
+          <StatBox label="Zirve Saati"           value={peak.hour || '-'}     color="#f59e0b" />
         </div>
 
         <div className="chart-container">
-          <h3>Kaza Risk Takvimi — Her 5 Dakikada İhlal Tahmini</h3>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            {[['Düşük', '#4ade80'], ['Orta', '#fbbf24'], ['Yüksek', '#f87171']].map(([label, color]) => (
-              <span key={label} style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
-                {label} Risk
-              </span>
-            ))}
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={violations} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+          <h3>Ortalama Limit Aşımı Tahmini (km/h) — Güven Bandıyla</h3>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={avgExcessData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+              <defs>
+                <linearGradient id="gradExcess" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#f97316" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="hour" tick={{ fill: '#94a3b8', fontSize: 10 }} interval={XAXIS_INTERVAL} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} width={45} />
-              <Tooltip
-                {...tooltipStyle}
-                formatter={(v, _, props) => [`${v} ihlal — ${props.payload.risk} Risk`, 'Tahmin']}
-              />
-              <ReferenceLine y={12} stroke="#f87171" strokeDasharray="4 4" label={{ value: 'Yüksek risk eşiği', fill: '#f87171', fontSize: 11 }} />
-              <ReferenceLine y={5}  stroke="#fbbf24" strokeDasharray="4 4" label={{ value: 'Orta risk eşiği',   fill: '#fbbf24', fontSize: 11 }} />
-              <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                {violations.map((v, i) => <Cell key={i} fill={v.color} />)}
-              </Bar>
-            </BarChart>
+              <Tooltip {...tooltipStyle} formatter={v => [`${v} km/h`, 'Ort. Aşım']} />
+              <Area type="monotone" dataKey="upper" fill="#f97316" fillOpacity={0.1} stroke="none" />
+              <Area type="monotone" dataKey="lower" fill="#1e293b"  fillOpacity={1}   stroke="none" />
+              <Area type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} fill="url(#gradExcess)" name="Limit Aşımı" />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
-
-        {avgExcessData.length > 0 && (
-          <div className="chart-container">
-            <h3>Ortalama Limit Aşımı Tahmini (km/h)</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={avgExcessData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="hour" tick={{ fill: '#94a3b8', fontSize: 10 }} interval={XAXIS_INTERVAL} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} width={45} />
-                <Tooltip {...tooltipStyle} formatter={v => [`${v} km/h`, 'Ort. Aşım']} />
-                <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {highRisk.length > 0 && (
-          <div className="chart-container">
-            <h3>🔴 Yüksek Riskli Saatler</h3>
-            <table>
-              <thead>
-                <tr><th>Saat</th><th>Tahmini İhlal</th><th>Risk</th></tr>
-              </thead>
-              <tbody>
-                {highRisk.slice(0, 8).map((v, i) => (
-                  <tr key={i}>
-                    <td>{v.hour}</td>
-                    <td>{v.count}</td>
-                    <td><span className="badge over">{v.risk}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </>}
     </section>
   )

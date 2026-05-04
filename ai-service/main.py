@@ -1,13 +1,16 @@
+import time
+import threading
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-import threading
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
+
 import config
 import db
 import predictor
 import seed_data
-from apscheduler.schedulers.background import BackgroundScheduler
-import atexit
 
 app = FastAPI(title="Kentsel Veri AI Servisi")
 
@@ -21,7 +24,6 @@ app.add_middleware(
 
 @app.get("/api/hourly/{channel}")
 def get_hourly(channel: str, days: int = 7):
-    """Son N günün saatlik özet verisini döndürür."""
     if channel == "density":
         df = db.fetch_hourly_density(days)
     elif channel == "traffic":
@@ -37,7 +39,6 @@ def get_hourly(channel: str, days: int = 7):
 
 @app.get("/api/predictions/{channel}")
 def get_predictions(channel: str):
-    """Prophet tahmin sonuçlarını döndürür (önümüzdeki 14 saat, saatlik)."""
     df = db.fetch_predictions(channel)
     if df.empty:
         return {"channel": channel, "count": 0, "data": []}
@@ -49,7 +50,6 @@ def get_predictions(channel: str):
 
 @app.post("/api/predict")
 def run_prediction():
-    """Tüm kanallar için tahmini manuel tetikler."""
     predictor.run_all()
     return {"status": "ok", "message": "Tahminler güncellendi"}
 
@@ -59,12 +59,36 @@ def health():
     return {"status": "ok"}
 
 
+def _wait_for_clickhouse(max_attempts: int = 15, delay: int = 4):
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client = db.get_client()
+            client.ping()
+            client.close()
+            print(f"[Startup] ClickHouse hazır ({attempt}. deneme)")
+            return True
+        except Exception as e:
+            print(f"[Startup] ClickHouse bekleniyor ({attempt}/{max_attempts}): {e}")
+            time.sleep(delay)
+    print("[Startup] ClickHouse bağlantısı kurulamadı, devam ediliyor...")
+    return False
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Servis açılınca: seed verisi yoksa üret, ardından ilk tahmini çalıştır."""
     def init():
-        seed_data.seed_if_needed()
-        predictor.run_all()
+        _wait_for_clickhouse()
+
+        try:
+            seed_data.seed_if_needed()
+        except Exception as e:
+            print(f"[Startup] Seed hatası: {e}")
+
+        try:
+            predictor.run_all()
+        except Exception as e:
+            print(f"[Startup] İlk tahmin hatası: {e}")
+
         print("[Startup] Hazır.")
 
     threading.Thread(target=init, daemon=True).start()
@@ -80,10 +104,7 @@ def scheduled_predict():
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scheduled_predict, trigger="interval", minutes=5)
 scheduler.start()
-print("[Scheduler] Her 5 dakikada bir tahmin güncellenir")
-
 atexit.register(lambda: scheduler.shutdown())
 
-
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=config.API_PORT, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=config.API_PORT, reload=False)
