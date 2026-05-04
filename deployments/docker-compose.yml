@@ -6,6 +6,7 @@ networks:
 
 volumes:
   clickhouse-data:
+  postgres-data:
 
 services:
 
@@ -95,9 +96,54 @@ services:
       retries: 15
       start_period: 45s
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - kentsel
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth_secret
+      POSTGRES_DB: authdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d authdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ─────────────────────────────────────────────
   # UYGULAMA SERVİSLERİ
   # ─────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ../auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    networks:
+      - kentsel
+    environment:
+      DATABASE_URL: postgres://auth:auth_secret@postgres:5432/authdb
+      KEYS_DIR: /app/keys
+      PORT: "8090"
+    volumes:
+      - ../auth-service/keys:/app/keys:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8090/auth/login || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   fake-data-service:
     build:
@@ -184,11 +230,16 @@ services:
       MQTT_TOPIC_PREFIX: telemetry
       SERVER_PORT: "8080"
       POLL_INTERVAL_MS: "50"
+      JWT_PUBLIC_KEY_PATH: keys/public.pem
+    volumes:
+      - ../auth-service/keys/public.pem:/app/keys/public.pem:ro
     depends_on:
       clickhouse:
         condition: service_healthy
       emqx:
         condition: service_healthy
+      auth-service:
+        condition: service_started
 
   dashboard-ui:
     build:
@@ -200,6 +251,9 @@ services:
       - "5173:80"
     networks:
       - kentsel
+    environment:
+      VITE_AUTH_URL: http://localhost:8090
     depends_on:
       - dashboard-api
       - ai-service
+      - auth-service
