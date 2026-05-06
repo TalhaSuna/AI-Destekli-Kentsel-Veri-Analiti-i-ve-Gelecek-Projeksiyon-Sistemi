@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS telemetry.traffic_lights (
     lng Float64,
     _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
-ORDER BY (_timestamp, lamp_id);
+ORDER BY (_timestamp, lamp_id)
+TTL toDateTime(_timestamp) + INTERVAL 8 DAY;
 
 CREATE TABLE IF NOT EXISTS telemetry.density (
     zone_id String,
@@ -32,7 +33,8 @@ CREATE TABLE IF NOT EXISTS telemetry.density (
     timestamp String,
     _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
-ORDER BY (_timestamp, zone_id);
+ORDER BY (_timestamp, zone_id)
+TTL toDateTime(_timestamp) + INTERVAL 8 DAY;
 
 CREATE TABLE IF NOT EXISTS telemetry.speed_violations (
     vehicle_id String,
@@ -44,7 +46,8 @@ CREATE TABLE IF NOT EXISTS telemetry.speed_violations (
     lng Float64,
     _timestamp DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
-ORDER BY (_timestamp, vehicle_id);
+ORDER BY (_timestamp, vehicle_id)
+TTL toDateTime(_timestamp) + INTERVAL 8 DAY;
 
 -- ============================================
 -- 2. Kafka tabloları (Kafka Engine) - Her satır ham JSON string
