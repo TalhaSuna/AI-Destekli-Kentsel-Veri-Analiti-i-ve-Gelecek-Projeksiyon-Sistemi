@@ -40,6 +40,3 @@ Desktop.ini
 
 # Claude Code
 .claude/
-
-# RSA private keys — asla commit etme
-**/keys/private.pem
