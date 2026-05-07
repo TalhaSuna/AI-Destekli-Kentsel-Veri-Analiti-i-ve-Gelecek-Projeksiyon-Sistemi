@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import mqtt from 'mqtt'
 
-const MQTT_URL = 'ws://localhost:8083/mqtt'
+const MQTT_URL = import.meta.env.VITE_MQTT_URL || 'ws://localhost:8083/mqtt'
 const TOPICS = ['telemetry/traffic_lights', 'telemetry/density', 'telemetry/speed_violations']
 const MAX_FEATURES = 300
 

@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 
-const AI_URL = 'http://localhost:8000'
+const AI_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000'
 const REFRESH_MS = 5 * 60 * 1000
 
 // UTC olarak gelen timestamp'i her zaman Türkiye saatine (UTC+3) çevirir

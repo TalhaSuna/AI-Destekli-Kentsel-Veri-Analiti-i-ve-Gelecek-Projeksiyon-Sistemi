@@ -121,14 +121,26 @@ services:
   # UYGULAMA SERVİSLERİ
   # ─────────────────────────────────────────────
 
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - kentsel
+    depends_on:
+      - gateway
+      - dashboard-ui
+
   auth-service:
     build:
       context: ../auth-service
       dockerfile: Dockerfile
     container_name: auth-service
     restart: unless-stopped
-    ports:
-      - "8090:8090"
     networks:
       - kentsel
     environment:
@@ -197,8 +209,6 @@ services:
       dockerfile: Dockerfile
     container_name: ai-service
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     networks:
       - kentsel
     environment:
@@ -218,8 +228,6 @@ services:
       dockerfile: Dockerfile
     container_name: dashboard-api
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     networks:
       - kentsel
     environment:
@@ -243,19 +251,34 @@ services:
       auth-service:
         condition: service_started
 
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    restart: unless-stopped
+    networks:
+      - kentsel
+    depends_on:
+      - dashboard-api
+      - auth-service
+      - ai-service
+
   dashboard-ui:
     build:
       context: ../dashboard-ui
       dockerfile: Dockerfile
+      args:
+        VITE_AUTH_URL: http://localhost
+        VITE_API_URL: http://localhost
+        VITE_AI_URL: http://localhost
+        VITE_MQTT_URL: ws://localhost:8083/mqtt
     container_name: dashboard-ui
     restart: unless-stopped
-    ports:
-      - "5173:80"
     networks:
       - kentsel
-    environment:
-      VITE_AUTH_URL: http://localhost:8090
     depends_on:
+      - gateway
       - dashboard-api
       - ai-service
       - auth-service

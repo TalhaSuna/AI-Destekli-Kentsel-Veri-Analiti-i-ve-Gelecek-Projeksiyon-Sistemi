@@ -3,39 +3,63 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"dashboard-api/internal/models"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// RestHandler frontend ilk açıldığında geçmiş verileri döner.
-// Frontend bu endpoint'leri 1 kez çağırır, sonra EMQX'ten canlı veriyi dinler.
 type RestHandler struct {
 	DB ch.Conn
 }
 
-// GetTrafficHistory tüm trafik ışığı verilerini zamana göre sıralı döner.
-func (h *RestHandler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query(context.Background(), `
-		SELECT lamp_id, status, timing_remains, is_malfunctioning,
-			   intersection_id, lat, lng, _timestamp
-		FROM traffic_lights ORDER BY _timestamp ASC
-	`)
+// parseDays ?days=N query parametresini okur; geçersizse varsayılan 7, max 30.
+func parseDays(r *http.Request) int {
+	days, err := strconv.Atoi(r.URL.Query().Get("days"))
+	if err != nil || days < 1 {
+		return 7
+	}
+	if days > 30 {
+		return 30
+	}
+	return days
+}
+
+// GetTrafficAnalytics son N günün trafik ışığı verilerini saatlik aggregate olarak döner.
+func (h *RestHandler) GetTrafficAnalytics(w http.ResponseWriter, r *http.Request) {
+	days := parseDays(r)
+
+	query := fmt.Sprintf(`
+		SELECT
+			toStartOfHour(_timestamp)       AS hour,
+			countIf(is_malfunctioning = 1)  AS malfunction_count,
+			countIf(status = 'red')         AS red_count,
+			countIf(status = 'green')       AS green_count,
+			countIf(status = 'yellow')      AS yellow_count,
+			count()                         AS total_events
+		FROM traffic_lights
+		WHERE _timestamp >= now() - INTERVAL %d DAY
+		GROUP BY hour
+		ORDER BY hour ASC
+	`, days)
+
+	rows, err := h.DB.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("ClickHouse sorgu hatası: %v", err)
+		log.Printf("traffic analytics sorgu hatası: %v", err)
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var results []models.TrafficLight
+	var results []models.TrafficAnalytics
 	for rows.Next() {
-		var row models.TrafficLight
+		var row models.TrafficAnalytics
 		if err := rows.ScanStruct(&row); err != nil {
-			log.Printf("traffic_lights scan hatası: %v", err)
+			log.Printf("traffic analytics scan hatası: %v", err)
 			continue
 		}
 		results = append(results, row)
@@ -44,25 +68,38 @@ func (h *RestHandler) GetTrafficHistory(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, results)
 }
 
-// GetDensityHistory tüm yoğunluk verilerini zamana göre sıralı döner.
-func (h *RestHandler) GetDensityHistory(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query(context.Background(), `
-		SELECT zone_id, vehicle_count, pedestrian_count, avg_speed,
-			   bus, car, bike, lat, lng, timestamp, _timestamp
-		FROM density ORDER BY _timestamp ASC
-	`)
+// GetDensityAnalytics son N günün yoğunluk verilerini saatlik aggregate olarak döner.
+func (h *RestHandler) GetDensityAnalytics(w http.ResponseWriter, r *http.Request) {
+	days := parseDays(r)
+
+	query := fmt.Sprintf(`
+		SELECT
+			toStartOfHour(_timestamp)  AS hour,
+			avg(vehicle_count)         AS avg_vehicles,
+			avg(avg_speed)             AS avg_speed,
+			avg(bus)                   AS avg_bus,
+			avg(car)                   AS avg_car,
+			avg(bike)                  AS avg_bike,
+			toUInt64(max(vehicle_count)) AS max_vehicles
+		FROM density
+		WHERE _timestamp >= now() - INTERVAL %d DAY
+		GROUP BY hour
+		ORDER BY hour ASC
+	`, days)
+
+	rows, err := h.DB.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("ClickHouse sorgu hatası: %v", err)
+		log.Printf("density analytics sorgu hatası: %v", err)
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var results []models.Density
+	var results []models.DensityAnalytics
 	for rows.Next() {
-		var row models.Density
+		var row models.DensityAnalytics
 		if err := rows.ScanStruct(&row); err != nil {
-			log.Printf("density scan hatası: %v", err)
+			log.Printf("density analytics scan hatası: %v", err)
 			continue
 		}
 		results = append(results, row)
@@ -71,25 +108,36 @@ func (h *RestHandler) GetDensityHistory(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, results)
 }
 
-// GetSpeedHistory tüm hız ihlali verilerini zamana göre sıralı döner.
-func (h *RestHandler) GetSpeedHistory(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query(context.Background(), `
-		SELECT vehicle_id, speed, limit_val, lane_id, direction,
-			   lat, lng, _timestamp
-		FROM speed_violations ORDER BY _timestamp ASC
-	`)
+// GetSpeedAnalytics son N günün hız ihlali verilerini saatlik aggregate olarak döner.
+func (h *RestHandler) GetSpeedAnalytics(w http.ResponseWriter, r *http.Request) {
+	days := parseDays(r)
+
+	query := fmt.Sprintf(`
+		SELECT
+			toStartOfHour(_timestamp)      AS hour,
+			count()                        AS violation_count,
+			avg(speed - limit_val)         AS avg_excess,
+			toFloat64(max(speed - limit_val)) AS max_excess,
+			avg(speed)                     AS avg_speed
+		FROM speed_violations
+		WHERE _timestamp >= now() - INTERVAL %d DAY
+		GROUP BY hour
+		ORDER BY hour ASC
+	`, days)
+
+	rows, err := h.DB.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("ClickHouse sorgu hatası: %v", err)
+		log.Printf("speed analytics sorgu hatası: %v", err)
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var results []models.SpeedViolation
+	var results []models.SpeedAnalytics
 	for rows.Next() {
-		var row models.SpeedViolation
+		var row models.SpeedAnalytics
 		if err := rows.ScanStruct(&row); err != nil {
-			log.Printf("speed_violations scan hatası: %v", err)
+			log.Printf("speed analytics scan hatası: %v", err)
 			continue
 		}
 		results = append(results, row)
@@ -98,7 +146,6 @@ func (h *RestHandler) GetSpeedHistory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, results)
 }
 
-// respondJSON CORS header'ları ekleyip JSON response yazar.
 func respondJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")

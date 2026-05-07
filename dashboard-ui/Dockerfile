@@ -3,6 +3,16 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+
+ARG VITE_AUTH_URL=http://localhost:8090
+ARG VITE_API_URL=http://localhost:8080
+ARG VITE_AI_URL=http://localhost:8000
+ARG VITE_MQTT_URL=ws://localhost:8083/mqtt
+ENV VITE_AUTH_URL=$VITE_AUTH_URL
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_AI_URL=$VITE_AI_URL
+ENV VITE_MQTT_URL=$VITE_MQTT_URL
+
 RUN npm run build
 
 FROM nginx:alpine
