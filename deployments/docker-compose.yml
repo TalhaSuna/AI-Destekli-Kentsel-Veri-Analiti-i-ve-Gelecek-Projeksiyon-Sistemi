@@ -17,8 +17,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    ports:
-      - "6379:6379"
     networks:
       - kentsel
     healthcheck:
@@ -30,8 +28,6 @@ services:
   kafka:
     image: apache/kafka:latest
     container_name: kafka
-    ports:
-      - "9092:9092"
     networks:
       - kentsel
     environment:
@@ -57,9 +53,6 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse
-    ports:
-      - "8123:8123"
-      - "9000:9000"
     networks:
       - kentsel
     environment:
@@ -84,9 +77,7 @@ services:
     image: emqx/emqx:latest
     container_name: emqx
     ports:
-      - "1883:1883"
       - "8083:8083"
-      - "18083:18083"
     networks:
       - kentsel
     environment:
@@ -101,8 +92,6 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: postgres
-    ports:
-      - "5433:5432"
     networks:
       - kentsel
     environment:
@@ -269,10 +258,10 @@ services:
       context: ../dashboard-ui
       dockerfile: Dockerfile
       args:
-        VITE_AUTH_URL: http://localhost
-        VITE_API_URL: http://localhost
-        VITE_AI_URL: http://localhost
-        VITE_MQTT_URL: ws://localhost:8083/mqtt
+        VITE_AUTH_URL: ${SERVER_URL}
+        VITE_API_URL: ${SERVER_URL}
+        VITE_AI_URL: ${SERVER_URL}
+        VITE_MQTT_URL: ws://${SERVER_MQTT_URL}:8083/mqtt
     container_name: dashboard-ui
     restart: unless-stopped
     networks:
