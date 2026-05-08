@@ -261,7 +261,7 @@ services:
         VITE_AUTH_URL: ${SERVER_URL}
         VITE_API_URL: ${SERVER_URL}
         VITE_AI_URL: ${SERVER_URL}
-        VITE_MQTT_URL: ws://${SERVER_MQTT_URL}:8083/mqtt
+        VITE_MQTT_URL: ws://${SERVER_MQTT_URL}/mqtt
     container_name: dashboard-ui
     restart: unless-stopped
     networks:
