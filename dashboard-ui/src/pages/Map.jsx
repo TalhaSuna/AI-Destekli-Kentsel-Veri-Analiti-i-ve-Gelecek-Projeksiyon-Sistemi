@@ -17,6 +17,7 @@ export default function Map() {
   const pendingRef = useRef({ traffic: [], density: [], speed: [] })
   const pendingCountsRef = useRef({ traffic: 0, density: 0, speed: 0 })
   const rafRef = useRef(null)
+  const lastFlushRef = useRef(0)
   const [connected, setConnected] = useState(false)
   const [counts, setCounts] = useState({ traffic: 0, density: 0, speed: 0 })
 
@@ -185,12 +186,14 @@ export default function Map() {
     pendingRef.current[key].push(...batch.map(toFeature))
     pendingCountsRef.current[key] += batch.length
     if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(flushToMap)
+      const delay = Math.max(0, 500 - (Date.now() - lastFlushRef.current))
+      rafRef.current = setTimeout(flushToMap, delay)
     }
   }
 
   function flushToMap() {
     rafRef.current = null
+    lastFlushRef.current = Date.now()
     if (!map.current || !mapReady.current) return
 
     const addedCounts = { traffic: 0, density: 0, speed: 0 }
