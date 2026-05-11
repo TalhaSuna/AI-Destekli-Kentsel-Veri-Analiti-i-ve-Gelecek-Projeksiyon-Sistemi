@@ -204,7 +204,7 @@ export default function Map() {
       const arr = featuresRef.current[key]
       arr.push(...pending)
       if (arr.length > MAX_FEATURES) arr.splice(0, arr.length - MAX_FEATURES)
-      map.current.getSource(sourceId).setData(toGeoJSON(arr))
+      map.current.getSource(sourceId).setData(toGeoJSON([...arr]))
       addedCounts[key] = pendingCountsRef.current[key]
       pendingRef.current[key] = []
       pendingCountsRef.current[key] = 0
